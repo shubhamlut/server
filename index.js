@@ -44,10 +44,12 @@ wss.on("connection", function connection(ws, req) {
       sendDirectMessage(ws, req, data);
     }
     if (path === "/broadcastMessage") {
-      broadcastMessage(ws, req, data);
+      createBroadcastList(ws, req, data);
     }
   });
-
+  ws.on("close", (code, reason) => {
+    handleUserDisconnect(ws, code, reason);
+  });
   ws.send("Welcome to beastThatsCode-Websocket");
 });
 
@@ -58,9 +60,18 @@ const storeConnection = (ws, req) => {
 
   if (query.room) {
     console.log("Entering room: ", query.room);
-    let candidate = { userId: query.userName, websocket: ws };
-    roomCandidates.push(candidate);
-    rooms.set(query.room, roomCandidates);
+    // let candidate = {
+    //   userId: query.userName,
+    //   websocket: ws,
+    //   roomId: query.room,
+    // };
+    // roomCandidates.push(candidate);
+    rooms.set(ws, {
+      userId: query.userName,
+      roomId: query.room,
+      websocket: ws,
+    });
+    // rooms.set(query.room, roomCandidates);
     ws.send(`You joined Room ${query.room}`);
   } else {
     console.log("Direct Message Chat");
@@ -91,18 +102,22 @@ const sendDirectMessage = (ws, req, data) => {
     ws.send("User is offline. Your message is not delivered");
   }
 };
-
-const broadcastMessage = (ws, req, data) => {
+// Create broadcastlist
+const createBroadcastList = (ws, req, data) => {
   const targetRoom = parseQuery(req).room;
-  const broadcastList = rooms.get(targetRoom);
+  const broadcastList = Array.from(rooms.values()).filter((client) => {
+    return client.roomId === targetRoom;
+  });
+
   const senderUser = broadcastList.filter((user) => {
     return user.userId === parseQuery(req).userName;
   });
+  //   triggering the function to broadcastMessage
+  broadcastMessage(broadcastList, ws, senderUser, data);
+};
 
+const broadcastMessage = (broadcastList, ws, senderUser, data) => {
   broadcastList.forEach(function each(client) {
-    if (client.websocket === ws) {
-      sender = client.userId;
-    }
     if (
       client.websocket !== ws &&
       client.websocket.readyState === WebSocket.OPEN
@@ -115,6 +130,17 @@ const broadcastMessage = (ws, req, data) => {
   });
 };
 
+const handleUserDisconnect = (ws, code, reason) => {
+  let connectedUser = Array.from(rooms.values()).filter((client) => {
+    return client.websocket !== ws;
+  });
+  let disconnectedUser = Array.from(rooms.values()).filter((client) => {
+    return client.websocket === ws;
+  });
+  let notifyMessage = `${disconnectedUser[0].userId} left the room`;
+  console.log(roomCandidates);
+  broadcastMessage(connectedUser, ws, disconnectedUser, notifyMessage);
+};
 // *******Not Used**********
 // Step 2
 // This function can be removed as the authentication part is handled by the first http request while login
