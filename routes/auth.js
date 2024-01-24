@@ -49,6 +49,7 @@ router.post(
 
     // Check if email already exists in the DB
     let user = await User.findOne({ email: req.body.email });
+    console.log(user)
     if (user) {
       return res.json({
         errors: [{ msg: "Email already exists" }],
