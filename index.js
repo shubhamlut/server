@@ -34,6 +34,7 @@ wss.on("connection", function connection(ws, req) {
   //Authentication logic (once user is authenticated fetch from the query what username connection was to connect to)
   //   authenticateUser(ws, req);
   storeConnection(ws, req);
+  handleUserConnected(ws, url.parse(req.url, true).query.room);
   ws.on("error", console.error);
 
   ws.on("message", function message(data) {
@@ -113,34 +114,64 @@ const createBroadcastList = (ws, req, data) => {
     return user.userId === parseQuery(req).userName;
   });
   //   triggering the function to broadcastMessage
-  broadcastMessage(broadcastList, ws, senderUser, data);
+  broadcastMessage(broadcastList, ws, senderUser, data, "message");
 };
-
-const broadcastMessage = (broadcastList, ws, senderUser, data) => {
+//Sending broadcastmessage
+const broadcastMessage = (broadcastList, ws, senderUser, data, messageType) => {
   broadcastList.forEach(function each(client) {
     if (
       client.websocket !== ws &&
       client.websocket.readyState === WebSocket.OPEN
     ) {
-      // This needs to be fixed
-      client.websocket.send(
-        `Message from ${senderUser[0].userId}: ${parseData(data)}`
-      );
+      if (messageType === "message") {
+        client.websocket.send(
+          `Message from ${senderUser[0].userId}: ${parseData(data)}`
+        );
+      }
+      if (messageType === "notify") {
+        client.websocket.send(parseData(data));
+      }
     }
   });
 };
-
+//This function gets triggered when any user disconnects from room
 const handleUserDisconnect = (ws, code, reason) => {
-  let connectedUser = Array.from(rooms.values()).filter((client) => {
-    return client.websocket !== ws;
-  });
   let disconnectedUser = Array.from(rooms.values()).filter((client) => {
     return client.websocket === ws;
   });
+  let connectedUsers = Array.from(rooms.values()).filter((client) => {
+    return (
+      client.websocket !== ws && client.roomId === disconnectedUser[0].roomId
+    );
+  });
   let notifyMessage = `${disconnectedUser[0].userId} left the room`;
-  console.log(roomCandidates);
-  broadcastMessage(connectedUser, ws, disconnectedUser, notifyMessage);
+  broadcastMessage(
+    connectedUsers,
+    ws,
+    disconnectedUser,
+    notifyMessage,
+    "notify"
+  );
 };
+
+//This function gets triggered when any user connects the room
+const handleUserConnected = (ws, roomId) => {
+  let oldConnectedUsers = Array.from(rooms.values()).filter((client) => {
+    return client.websocket !== ws && client.roomId === roomId;
+  });
+  let newConnectedUser = Array.from(rooms.values()).filter((client) => {
+    return client.websocket === ws;
+  });
+  let notifyMessage = `${newConnectedUser[0].userId} joined the room`;
+  broadcastMessage(
+    oldConnectedUsers,
+    ws,
+    newConnectedUser,
+    notifyMessage,
+    "notify"
+  );
+};
+
 // *******Not Used**********
 // Step 2
 // This function can be removed as the authentication part is handled by the first http request while login
