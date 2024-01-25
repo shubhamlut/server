@@ -26,21 +26,26 @@ const server = app.listen(config.port, () => {
 // To store all the connections.If any new user joins and its authenticated then adding the user to the 'connections' Map which would be associated with its correponding websocket
 const connections = new Map();
 const rooms = new Map();
-const roomCandidates = [];
 const wss = new WebSocketServer.WebSocketServer({ server });
 
 // Step 2
 wss.on("connection", function connection(ws, req) {
   //Authentication logic (once user is authenticated fetch from the query what username connection was to connect to)
   //   authenticateUser(ws, req);
+
+  const parsedUrl = url.parse(req.url, true);
+  const path = parsedUrl.pathname;
   storeConnection(ws, req);
-  handleUserConnected(ws, url.parse(req.url, true).query.room);
+  if (path === "/broadcastMessage") {
+    handleUserConnected(ws, url.parse(req.url, true).query.room);
+  }
   ws.on("error", console.error);
 
+  //ws://localhost:8080/broadcastMessage?userName=shubham&room=2
+
+  //ws://localhost:8080/directMessage?userName=shubham&targetUser=anaysha
+
   ws.on("message", function message(data) {
-    const parsedUrl = url.parse(req.url, true);
-    const path = parsedUrl.pathname;
-    console.log(path);
     if (path === "/directMessage") {
       sendDirectMessage(ws, req, data);
     }
@@ -49,7 +54,9 @@ wss.on("connection", function connection(ws, req) {
     }
   });
   ws.on("close", (code, reason) => {
-    handleUserDisconnect(ws, code, reason);
+    if (path === "/broadcastMessage") {
+      handleUserDisconnect(ws, code, reason);
+    }
   });
   ws.send("Welcome to beastThatsCode-Websocket");
 });
@@ -145,6 +152,9 @@ const handleUserDisconnect = (ws, code, reason) => {
     );
   });
   let notifyMessage = `${disconnectedUser[0].userId} left the room`;
+  //Clean up activity
+  rooms.delete(ws);
+  ws.close();
   broadcastMessage(
     connectedUsers,
     ws,
@@ -172,10 +182,4 @@ const handleUserConnected = (ws, roomId) => {
   );
 };
 
-// *******Not Used**********
-// Step 2
-// This function can be removed as the authentication part is handled by the first http request while login
-// const authenticateUser = (ws, req) => {
-//   //If user is valid post authentication storing it to "Connections" Map
-//   storeConnection(ws, req);
-// };
+
