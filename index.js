@@ -30,15 +30,17 @@ const wss = new WebSocketServer.WebSocketServer({ server });
 
 // Step 2
 wss.on("connection", function connection(ws, req) {
-  //Authentication logic (once user is authenticated fetch from the query what username connection was to connect to)
-  //   authenticateUser(ws, req);
-
   const parsedUrl = url.parse(req.url, true);
   const path = parsedUrl.pathname;
   storeConnection(ws, req);
   if (path === "/broadcastMessage") {
     handleUserConnected(ws, url.parse(req.url, true).query.room);
   }
+
+  //Send this on joining the Network
+  ws.send("Welcome to beastThatCodes-Websocket");
+
+  //On Error
   ws.on("error", console.error);
 
   //ws://localhost:8080/broadcastMessage?userName=shubham&room=2
@@ -58,7 +60,6 @@ wss.on("connection", function connection(ws, req) {
       handleUserDisconnect(ws, code, reason);
     }
   });
-  ws.send("Welcome to beastThatsCode-Websocket");
 });
 
 // Step 3
@@ -68,18 +69,12 @@ const storeConnection = (ws, req) => {
 
   if (query.room) {
     console.log("Entering room: ", query.room);
-    // let candidate = {
-    //   userId: query.userName,
-    //   websocket: ws,
-    //   roomId: query.room,
-    // };
-    // roomCandidates.push(candidate);
     rooms.set(ws, {
       userId: query.userName,
       roomId: query.room,
       websocket: ws,
     });
-    // rooms.set(query.room, roomCandidates);
+
     ws.send(`You joined Room ${query.room}`);
   } else {
     console.log("Direct Message Chat");
@@ -102,10 +97,10 @@ const parseData = (data) => {
 //#2
 const sendDirectMessage = (ws, req, data) => {
   const senderUsername = parseQuery(req).userName;
-  const targetUsername = parseQuery(req).targetUser;
+  const targetUsername = JSON.parse(data).targetUser
   if (connections.has(targetUsername)) {
     const targetWs = connections.get(targetUsername);
-    targetWs.send(`Message from ${senderUsername}: ${data}`);
+    targetWs.send(JSON.parse(data).message);
   } else {
     ws.send("User is offline. Your message is not delivered");
   }
@@ -181,5 +176,3 @@ const handleUserConnected = (ws, roomId) => {
     "notify"
   );
 };
-
-
