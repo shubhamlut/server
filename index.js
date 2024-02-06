@@ -32,13 +32,15 @@ const wss = new WebSocketServer.WebSocketServer({ server });
 wss.on("connection", function connection(ws, req) {
   const parsedUrl = url.parse(req.url, true);
   const path = parsedUrl.pathname;
+  const connectedUser = parsedUrl.query.userName;
+  console.log(parsedUrl);
   storeConnection(ws, req);
   if (path === "/broadcastMessage") {
     handleUserConnected(ws, url.parse(req.url, true).query.room);
   }
 
   //Send this on joining the Network
-  ws.send("Welcome to beastThatCodes-Websocket");
+  // ws.send(JSON.stringify({ message: "Welcome to beastThatCodes-Websocket" }));
 
   //On Error
   ws.on("error", console.error);
@@ -46,6 +48,8 @@ wss.on("connection", function connection(ws, req) {
   //ws://localhost:8080/broadcastMessage?userName=shubham&room=2
 
   //ws://localhost:8080/directMessage?userName=shubham&targetUser=anaysha
+
+  broastcastOnlineStatus(ws, connectedUser);
 
   ws.on("message", function message(data) {
     if (path === "/directMessage") {
@@ -97,12 +101,22 @@ const parseData = (data) => {
 //#2
 const sendDirectMessage = (ws, req, data) => {
   const senderUsername = parseQuery(req).userName;
-  const targetUsername = JSON.parse(data).targetUser
+  const targetUsername = JSON.parse(data).targetUser;
   if (connections.has(targetUsername)) {
     const targetWs = connections.get(targetUsername);
-    targetWs.send(JSON.parse(data).message);
+    const requestPayload = {
+      message: JSON.parse(data).message,
+      fromUser: senderUsername,
+      type: "message",
+    };
+    targetWs.send(JSON.stringify(requestPayload));
   } else {
-    ws.send("User is offline. Your message is not delivered");
+    ws.send(
+      JSON.stringify({
+        message: "User is offline. Your message is not delivered",
+        fromUser: targetUsername,
+      })
+    );
   }
 };
 // Create broadcastlist
@@ -175,4 +189,16 @@ const handleUserConnected = (ws, roomId) => {
     notifyMessage,
     "notify"
   );
+};
+
+const broastcastOnlineStatus = (ws, connectedUser) => {
+  console.log(connectedUser);
+  console.log(wss.clients)
+  wss.clients.forEach(function each(client) {
+    if (client.websocket !== ws && client.readyState === WebSocket.OPEN) {
+      client.send(
+        JSON.stringify({ user: connectedUser, online: true, type: "status" })
+      );
+    }
+  });
 };
