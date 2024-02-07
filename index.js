@@ -33,7 +33,7 @@ wss.on("connection", function connection(ws, req) {
   const parsedUrl = url.parse(req.url, true);
   const path = parsedUrl.pathname;
   const connectedUser = parsedUrl.query.userName;
-  console.log(parsedUrl);
+
   storeConnection(ws, req);
   if (path === "/broadcastMessage") {
     handleUserConnected(ws, url.parse(req.url, true).query.room);
@@ -49,8 +49,10 @@ wss.on("connection", function connection(ws, req) {
 
   //ws://localhost:8080/directMessage?userName=shubham&targetUser=anaysha
 
-  broastcastOnlineStatus(ws, connectedUser);
+  broastcastStatus(ws, connectedUser, true);
 
+  // This is used to send the list of online user to the connection who had connected the server
+  sendListOfOnlineUsers(ws);
   ws.on("message", function message(data) {
     if (path === "/directMessage") {
       sendDirectMessage(ws, req, data);
@@ -59,9 +61,13 @@ wss.on("connection", function connection(ws, req) {
       createBroadcastList(ws, req, data);
     }
   });
+
   ws.on("close", (code, reason) => {
     if (path === "/broadcastMessage") {
       handleUserDisconnect(ws, code, reason);
+    }
+    if (path === "/directMessage") {
+      broastcastStatus(ws, "", false);
     }
   });
 });
@@ -191,14 +197,46 @@ const handleUserConnected = (ws, roomId) => {
   );
 };
 
-const broastcastOnlineStatus = (ws, connectedUser) => {
-  console.log(connectedUser);
-  console.log(wss.clients)
-  wss.clients.forEach(function each(client) {
-    if (client.websocket !== ws && client.readyState === WebSocket.OPEN) {
-      client.send(
-        JSON.stringify({ user: connectedUser, online: true, type: "status" })
-      );
+const broastcastStatus = (ws, connectedUser, status) => {
+  const sendUpdate = (status, connectedUser) => {
+    wss.clients.forEach(function each(client) {
+      if (client.websocket !== ws && client.readyState === WebSocket.OPEN) {
+        client.send(
+          JSON.stringify({
+            user: connectedUser,
+            online: status,
+            type: "status",
+          })
+        );
+      }
+    });
+  };
+  if (status) {
+    sendUpdate(status, connectedUser);
+  } else {
+    sendUpdate(status, getMapKeyByValue(ws));
+
+    // removing the user from connection once user is disconnected
+    connections.delete(getMapKeyByValue(ws));
+  }
+};
+const getMapKeyByValue = (value) => {
+  let mapKey;
+  for (const [key, val] of connections.entries()) {
+    if (val === value) {
+      mapKey = key;
+      break;
     }
-  });
+  }
+  return mapKey;
+};
+
+const sendListOfOnlineUsers = (ws) => {
+  let onlineUsers = Array.from(connections.keys());
+  let payload = {
+    type: "status",
+    online: true,
+    user: onlineUsers,
+  };
+  ws.send(JSON.stringify(payload));
 };
