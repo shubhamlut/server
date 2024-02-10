@@ -33,8 +33,8 @@ wss.on("connection", function connection(ws, req) {
   const parsedUrl = url.parse(req.url, true);
   const path = parsedUrl.pathname;
   const connectedUser = parsedUrl.query.userName;
-
   storeConnection(ws, req);
+
   if (path === "/broadcastMessage") {
     handleUserConnected(ws, url.parse(req.url, true).query.room);
   }
@@ -45,7 +45,7 @@ wss.on("connection", function connection(ws, req) {
   //On Error
   ws.on("error", console.error);
 
-  //ws://localhost:8080/broadcastMessage?userName=shubham&room=2
+  //ws://localhost:8080/broadcastMessage?userName=shubham&room=2&roomName="Room 1"
 
   //ws://localhost:8080/directMessage?userName=shubham&targetUser=anaysha
 
@@ -53,6 +53,7 @@ wss.on("connection", function connection(ws, req) {
 
   // This is used to send the list of online user to the connection who had connected the server
   sendListOfOnlineUsers(ws);
+  getAllRooms(ws);
   ws.on("message", function message(data) {
     if (path === "/directMessage") {
       sendDirectMessage(ws, req, data);
@@ -82,9 +83,10 @@ const storeConnection = (ws, req) => {
     rooms.set(ws, {
       userId: query.userName,
       roomId: query.room,
+      roomName: query.roomName,
       websocket: ws,
     });
-
+   
     ws.send(`You joined Room ${query.room}`);
   } else {
     console.log("Direct Message Chat");
@@ -240,3 +242,19 @@ const sendListOfOnlineUsers = (ws) => {
   };
   ws.send(JSON.stringify(payload));
 };
+
+const getAllRooms = (ws) => {
+  let allRooms = new Set();
+  for (const [key, val] of rooms.entries()) {
+    let room = { roomId: val.roomId, roomName: val.roomName };
+    let roomString = JSON.stringify(room);
+    if (!allRooms.has(roomString)) {
+      allRooms.add(roomString);
+    }
+  }
+  // Convert back to array of objects
+  let uniqueRooms = Array.from(allRooms).map(roomString => JSON.parse(roomString));
+  console.log(uniqueRooms);
+  ws.send(JSON.stringify({ type: "rooms", rooms: uniqueRooms }));
+};
+
