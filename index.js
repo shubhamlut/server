@@ -33,65 +33,110 @@ wss.on("connection", function connection(ws, req) {
   const parsedUrl = url.parse(req.url, true);
   const path = parsedUrl.pathname;
   const connectedUser = parsedUrl.query.userName;
-  storeConnection(ws, req);
 
-  if (path === "/broadcastMessage") {
-    handleUserConnected(ws, url.parse(req.url, true).query.room);
+  //Store the newly connected user if not already joined
+  if (connections.has(connectedUser)) {
+    console.log(connections.has(connectedUser));
+    ws.send(
+      JSON.stringify({
+        type: "Connection Check",
+        message: "Connection already exists",
+      })
+    );
+  } else {
+    storeConnection(ws, req);
+    broastcastStatus(ws, connectedUser, true);
   }
 
-  //Send this on joining the Network
-  // ws.send(JSON.stringify({ message: "Welcome to beastThatCodes-Websocket" }));
+  //Event Handler to handle the incoming messages from client
+  ws.on("message", function message(data) {
+    console.log("Incoming Message from client side received.");
+    handleMessageFromClient(data, ws);
+  });
 
   //On Error
   ws.on("error", console.error);
 
-  //ws://localhost:8080/broadcastMessage?userName=shubham&room=2&roomName="Room 1"
-
-  //ws://localhost:8080/directMessage?userName=shubham&targetUser=anaysha
-
-  broastcastStatus(ws, connectedUser, true);
-
-  // This is used to send the list of online user to the connection who had connected the server
-  sendListOfOnlineUsers(ws);
-  getAllRooms(ws);
-  ws.on("message", function message(data) {
-    if (path === "/directMessage") {
-      sendDirectMessage(ws, req, data);
-    }
-    if (path === "/broadcastMessage") {
-      createBroadcastList(ws, req, data);
-    }
-  });
-
+  //Event handler to handle the closing of connection
   ws.on("close", (code, reason) => {
-    if (path === "/broadcastMessage") {
-      handleUserDisconnect(ws, code, reason);
-    }
-    if (path === "/directMessage") {
+    if (path === "/newConnection") {
       broastcastStatus(ws, "", false);
+      removeUserFromRoom(ws);
     }
   });
 });
 
+const handleMessageFromClient = (data, ws) => {
+  let connectionType = JSON.parse(data).connectionType;
+  if (connectionType === "directMessage") {
+    sendDirectMessage(data, ws);
+  }
+  if (connectionType === "joinRoom") {
+    let roomId = JSON.parse(data).room;
+    let roomName = JSON.parse(data).roomName;
+    let userName = JSON.parse(data).userName;
+
+    addUserToRoom(ws, userName, roomId, roomName);
+    notifyOthersInRoom(ws, roomId);
+  }
+
+  if (connectionType === "leaveRoom") {
+    let roomId = JSON.parse(data).room;
+    let roomName = JSON.parse(data).roomName;
+    let userName = JSON.parse(data).userName;
+
+    removeUserFromRoom(ws, userName, roomId, roomName);
+  }
+  if (connectionType === "broadcastMessage") {
+    console.log(connectionType);
+    createBroadcastList(data, ws, connectionType);
+  }
+};
+const removeUserFromRoom = (ws) => {
+  if (rooms.get(ws)) {
+    let disconnectedUser = Array.from(rooms.values()).filter((client) => {
+      return client.websocket === ws;
+    });
+    let connectedUsers = Array.from(rooms.values()).filter((client) => {
+      return (
+        client.websocket !== ws && client.roomId === disconnectedUser[0].roomId
+      );
+    });
+    let notifyMessage = `${disconnectedUser[0].userId} left the room`;
+    console.log("Leaving the room");
+    //Clean up activity
+    rooms.delete(ws);
+    ws.close();
+    broadcastMessage(
+      connectedUsers,
+      ws,
+      disconnectedUser,
+      notifyMessage,
+      "notify"
+    );
+  }
+};
 // Step 3
 // This function is called once user is authenticated
 const storeConnection = (ws, req) => {
   const query = url.parse(req.url, true).query;
+  console.log("New User Joined the connection...");
+  connections.set(query.userName, ws);
+  sendListOfOnlineUsers(ws);
+  getAllRooms(ws);
+ 
+};
 
-  if (query.room) {
-    console.log("Entering room: ", query.room);
-    rooms.set(ws, {
-      userId: query.userName,
-      roomId: query.room,
-      roomName: query.roomName,
-      websocket: ws,
-    });
-   
-    ws.send(`You joined Room ${query.room}`);
-  } else {
-    console.log("Direct Message Chat");
-    connections.set(query.userName, ws);
-  }
+const addUserToRoom = (ws, userId, roomId, roomName) => {
+  console.log("Entering room: ", roomId);
+  rooms.set(ws, {
+    userId: userId,
+    roomId: roomId,
+    roomName: roomName,
+    websocket: ws,
+  });
+  //Send message to connected user that he/she have joined the room
+  ws.send(`You joined ${roomName}`);
 };
 
 //helper functions
@@ -107,9 +152,10 @@ const parseData = (data) => {
   return parsedString;
 };
 //#2
-const sendDirectMessage = (ws, req, data) => {
-  const senderUsername = parseQuery(req).userName;
+const sendDirectMessage = (data, ws) => {
+  const senderUsername = JSON.parse(data).userName;
   const targetUsername = JSON.parse(data).targetUser;
+  console.log(connections)
   if (connections.has(targetUsername)) {
     const targetWs = connections.get(targetUsername);
     const requestPayload = {
@@ -117,6 +163,7 @@ const sendDirectMessage = (ws, req, data) => {
       fromUser: senderUsername,
       type: "message",
     };
+    console.log("sending message")
     targetWs.send(JSON.stringify(requestPayload));
   } else {
     ws.send(
@@ -128,61 +175,47 @@ const sendDirectMessage = (ws, req, data) => {
   }
 };
 // Create broadcastlist
-const createBroadcastList = (ws, req, data) => {
-  const targetRoom = parseQuery(req).room;
+const createBroadcastList = (data, ws, connectionType) => {
+  // Get the room where we need to send the message
+  const targetRoom = JSON.parse(data).room;
+  //Get the list of users present in "targetRoom"
   const broadcastList = Array.from(rooms.values()).filter((client) => {
     return client.roomId === targetRoom;
   });
-
+  // Get the user who wants to send the message in "targetRoom"
   const senderUser = broadcastList.filter((user) => {
-    return user.userId === parseQuery(req).userName;
+    return user.userId === JSON.parse(data).userName;
   });
   //   triggering the function to broadcastMessage
-  broadcastMessage(broadcastList, ws, senderUser, data, "message");
+  broadcastMessage(broadcastList, ws, senderUser, data, connectionType);
 };
 //Sending broadcastmessage
-const broadcastMessage = (broadcastList, ws, senderUser, data, messageType) => {
+const broadcastMessage = (
+  broadcastList,
+  ws,
+  senderUser,
+  message,
+  connectionType
+) => {
   broadcastList.forEach(function each(client) {
     if (
       client.websocket !== ws &&
       client.websocket.readyState === WebSocket.OPEN
     ) {
-      if (messageType === "message") {
+      if (connectionType === "broadcastMessage") {
         client.websocket.send(
-          `Message from ${senderUser[0].userId}: ${parseData(data)}`
+          `Message from ${senderUser[0].userId}: ${parseData(message)}`
         );
       }
-      if (messageType === "notify") {
-        client.websocket.send(parseData(data));
+      if (connectionType === "notify") {
+        client.websocket.send(parseData(message));
       }
     }
   });
 };
-//This function gets triggered when any user disconnects from room
-const handleUserDisconnect = (ws, code, reason) => {
-  let disconnectedUser = Array.from(rooms.values()).filter((client) => {
-    return client.websocket === ws;
-  });
-  let connectedUsers = Array.from(rooms.values()).filter((client) => {
-    return (
-      client.websocket !== ws && client.roomId === disconnectedUser[0].roomId
-    );
-  });
-  let notifyMessage = `${disconnectedUser[0].userId} left the room`;
-  //Clean up activity
-  rooms.delete(ws);
-  ws.close();
-  broadcastMessage(
-    connectedUsers,
-    ws,
-    disconnectedUser,
-    notifyMessage,
-    "notify"
-  );
-};
 
 //This function gets triggered when any user connects the room
-const handleUserConnected = (ws, roomId) => {
+const notifyOthersInRoom = (ws, roomId) => {
   let oldConnectedUsers = Array.from(rooms.values()).filter((client) => {
     return client.websocket !== ws && client.roomId === roomId;
   });
@@ -217,7 +250,6 @@ const broastcastStatus = (ws, connectedUser, status) => {
     sendUpdate(status, connectedUser);
   } else {
     sendUpdate(status, getMapKeyByValue(ws));
-
     // removing the user from connection once user is disconnected
     connections.delete(getMapKeyByValue(ws));
   }
@@ -253,8 +285,9 @@ const getAllRooms = (ws) => {
     }
   }
   // Convert back to array of objects
-  let uniqueRooms = Array.from(allRooms).map(roomString => JSON.parse(roomString));
+  let uniqueRooms = Array.from(allRooms).map((roomString) =>
+    JSON.parse(roomString)
+  );
   console.log(uniqueRooms);
   ws.send(JSON.stringify({ type: "rooms", rooms: uniqueRooms }));
 };
-
