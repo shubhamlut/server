@@ -9,6 +9,7 @@ const fetchUser = require("../middleware/fetchuser");
 const fs = require("fs");
 const { btoa } = require("buffer");
 const multer = require("multer");
+const WebSocket = require('ws')
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -20,6 +21,7 @@ const storage = multer.diskStorage({
 });
 
 function arrayBufferToString(arrayBuffer) {
+
   let byteArray = new Uint16Array(arrayBuffer);
   let byteString = "";
   for (let i = 0; i < byteArray.length; i++) {
@@ -99,7 +101,7 @@ router.post(
 );
 
 //ROUTE #2: User Login
-
+/* This is used to login. If successfully logged in then connect the websocket server */
 router.post(
   "/login",
   [
@@ -112,10 +114,8 @@ router.post(
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors });
     }
-
     try {
       const user = await User.findOne({ email });
-
       if (!user) {
         return res.status(400).json({
           success: false,
@@ -136,16 +136,21 @@ router.post(
         },
       };
       const jwtData = jwt.sign(data, config.secretKey);
+      //Creating a websocket connection if login successful
+      const ws = new WebSocket(`${config.websocketBaseURL}:${config.port}/newConnection?userId=${user.id}`);
+
+      //Send the success code and also the websocket object to client so it can be used for realtime communication
       res.status(200).json({
         userId: user._id,
-        userName: user.name,
+        userName: user.name, 
         success: true,
         jwtToken: jwtData,
+        webSocket:ws
       });
     } catch (error) {
       res
         .status(500)
-        .json({ success: false, message: "Internal Server Error" });
+        .json({ success: false, message: "Internal Server Error"});
     }
   }
 );
