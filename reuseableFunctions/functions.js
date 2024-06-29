@@ -2,6 +2,7 @@
 const User = require("../models/Users");
 const WebSocket = require("ws");
 const { use } = require("../routes/auth");
+const { connections } = require("mongoose");
 const ACTIVE = true;
 const INACTIVE = false;
 
@@ -15,7 +16,8 @@ const checkUserExists = (connectedUser, connections) => {
 };
 
 const getUserName = async (userId) => {
-  let userName = await User.findOne({ userId });
+  let userName = await User.findOne({ _id: userId });
+  userName = userName.name;
   return userName;
 };
 
@@ -28,7 +30,7 @@ const storeConnection = (ws, wss, connectedUser, connections) => {
   console.log(`${connectedUser} Joined the connection...`);
   connections.set(connectedUser, ws);
   //Once user is disconnected notify all the active users about it
-  broastcastStatus(ws, wss, connectedUser, ACTIVE);
+  broastcastStatus(ws, wss, connectedUser, ACTIVE, connections);
 };
 
 //remove connection if user logouts or disconnects
@@ -36,17 +38,44 @@ const removeConnection = (connections, ws, wss) => {
   const disconnectedUser = getMapKeyByValue(ws, connections);
   if (connections.has(disconnectedUser)) {
     connections.delete(disconnectedUser);
+    console.log("removing older connection");
+    broastcastStatus(ws, wss, disconnectedUser, INACTIVE, connections);
   }
   //Once user is disconnected notify all the active users about it
-  broastcastStatus(ws, wss, disconnectedUser, INACTIVE);
 };
 const handleMessageFromClient = () => {
   /* Handle incoming messages from logged in user */
 };
 
+const broastcastStatus = async (ws, wss, user, status, connections) => {
+  console.log("broadcasting status");
+  const requestPayload = {
+    message: `${await getUserName(user)} is ${
+      status ? "now available" : "offline"
+    }`,
+    senderUserid: user,
+    senderUserName: await getUserName(user),
+    type: "status",
+    status: status,
+  };
+  wss.clients.forEach((client) => {
+    if (client !== ws && client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify(requestPayload));
+    }
+  });
+  const onlineUsers = listOfOnlineUsers(connections);
+  let payloadObject = {
+    type: "onlineUsers",
+    onlineUsers: onlineUsers,
+  };
+  ws.send(JSON.stringify(payloadObject));
+};
 const sendMessageToClient = () => {};
 
-const listOfOnlineUsers = () => {};
+const listOfOnlineUsers = (connections) => {
+  const activeUsers = connections.keys();
+  return (onlineUsers = Array.from(activeUsers));
+};
 
 const broadcastMessage = () => {};
 
@@ -59,21 +88,6 @@ const getMapKeyByValue = (value, connections) => {
     }
   }
   return mapKey;
-};
-
-const broastcastStatus = (ws, wss, user, status) => {
-  wss.clients.forEach(function each(client) {
-    if (client.websocket !== ws && client.readyState === WebSocket.OPEN) {
-      client.send(
-        JSON.stringify({
-          userId: user,
-          userName: getUserName(user),
-          online: status,
-          type: "status",
-        })
-      );
-    }
-  });
 };
 
 module.exports = {

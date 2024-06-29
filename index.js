@@ -70,6 +70,7 @@ wss.on("connection", function connection(ws, req) {
   ws.on("message", function message(data) {
     //Check message type (directMessage or broadcastMessage)
     const messageType = JSON.parse(data).messageType;
+    console.log('Incoming message')
     const senderUserId = url.parse(req.url, true).query.userId
     switch (messageType) {
       case "directMessage":

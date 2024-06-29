@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const JWT_SECRET = "shubhamissmartboy";
+const config = require("../config");
 
 // As name suggest the purpose of this middleware is to fetch the user and add to the the request by req.user = data.user;
 fetchUser = async (req, res, next) => {
@@ -8,7 +8,7 @@ fetchUser = async (req, res, next) => {
     if (!token) {
       res.status(401).send({ error: "Please authenticate using valid token" });
     }
-    const data = jwt.verify(token, JWT_SECRET);
+    const data = jwt.verify(token, config.secretKey);
     //We are twicking the req here by adding the user in it
     req.user = data.user;
     next();
