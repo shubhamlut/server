@@ -45,7 +45,7 @@ router.post(
     // check if there are any validation errors
     errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json({ errors: errors.array(), success: false });
     }
 
     // Check if email already exists in the DB
@@ -123,7 +123,7 @@ router.post(
       }
       let passwordCompare = await bcrypt.compare(password, user.password);
       if (!passwordCompare) {
-        return res.status(400).json({
+        return res.status(401).json({
           success: false,
           error: "Please try to login with valid credentials",
         });
@@ -201,12 +201,12 @@ router.get("/getuser", fetchUser, async (req, res) => {
       mimeType: user.mimeType,
     };
   });
-  res.send(userForClient);
+  res.send({ success: true, userForClient });
 });
 
-router.get("/getusers",fetchUser,async(req,res)=>{
-  let users = await User.find()
-  res.send(users)
-})
+router.get("/getusers", fetchUser, async (req, res) => {
+  let users = await User.find();
+  res.send(users);
+});
 
 module.exports = router;

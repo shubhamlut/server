@@ -1,12 +1,12 @@
 const reusableFunctions = require("../reuseableFunctions/functions");
 
-const handleMessageFromClient = (senderUserId, data, ws, connections) => {
-  console.log(senderUserId);
-  let connectionType = JSON.parse(data).messageType;
-  if (connectionType === "directMessage") {
-    sendDirectMessage(senderUserId, data, ws, connections);
-  }
-};
+// const handleMessageFromClient = (senderUserId, data, ws, connections) => {
+//   console.log(senderUserId);
+//   let connectionType = JSON.parse(data).messageType;
+//   if (connectionType === "directMessage") {
+//     sendDirectMessage(senderUserId, data, ws, connections);
+//   }
+// };
 
 const sendDirectMessage = async (senderUserId, data, ws, connections) => {
   const targetUserId = JSON.parse(data).targetUser;
@@ -33,6 +33,5 @@ const sendDirectMessage = async (senderUserId, data, ws, connections) => {
 };
 
 module.exports = {
-  handleMessageFromClient,
   sendDirectMessage,
 };
